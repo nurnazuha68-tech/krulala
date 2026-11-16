@@ -110,11 +110,11 @@ label{display:block;font-size:13px;font-weight:700;margin:14px 0 7px}input,selec
  <div class="hero"><h2>ยินดีต้อนรับ 🌙</h2><p>เข้าสู่ระบบเพื่อตรวจสอบผลการเรียน<br>โรงเรียนดารุ้ลญาลาล</p></div>
  <div class="card">
   <h3 style="margin:0;color:var(--navy)">เข้าสู่ระบบ</h3>
-  <label for="username">ชื่อผู้ใช้ / รหัสนักเรียน</label><input id="username" placeholder="กรอกชื่อผู้ใช้หรือรหัสนักเรียน">
-  <label for="password">รหัสผ่าน</label><input id="password" type="password" placeholder="กรอกรหัสผ่าน">
-  <button class="primary" onclick="login()">เข้าสู่ระบบ</button>
-  <div id="loginError" class="note" style="color:#b34e3f;margin-top:10px"></div>
-  <div class="demo"><b>บัญชีทดลองสำหรับดูตัวอย่าง</b><br>คุณครู: <b>admin</b> / รหัสผ่าน <b>admin123</b><br>นักเรียน: <b>1001</b> / รหัสผ่าน <b>1234</b></div>
+  <label for="username">อีเมลที่ลงทะเบียนในระบบ</label><input id="username" type="email" autocomplete="username" placeholder="กรอกอีเมลของคุณ">
+  <label for="password">รหัสผ่าน</label><input id="password" type="password" autocomplete="current-password" placeholder="กรอกรหัสผ่าน">
+  <button class="primary" id="loginButton" onclick="login()">เข้าสู่ระบบ</button>
+  <div id="loginError" class="note" style="color:#b34e3f;margin-top:10px" role="alert"></div>
+  <div class="demo">เข้าสู่ระบบด้วยบัญชีที่สร้างไว้ใน Supabase Authentication เท่านั้น<br><b>หมายเหตุ:</b> ข้อมูลนักเรียนและคะแนนในหน้าจัดการยังเป็นข้อมูลตัวอย่าง จนกว่าจะเชื่อมตารางฐานข้อมูลในขั้นตอนถัดไป</div>
  </div>
 </section>
 
@@ -168,7 +168,12 @@ label{display:block;font-size:13px;font-weight:700;margin:14px 0 7px}input,selec
 </section>
 <div class="footer">โรงเรียนดารุ้ลญาลาล · จัดทำโดย คุณครูออล่า หลงงัน</div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+// ใช้เฉพาะ Project URL และ Publishable key (ห้ามใส่ service_role key ในไฟล์นี้)
+const SUPABASE_URL = 'https://irrljtmbxsupijocruqz.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_-qFEwLV6wmcnVakFq_N4CA_8ZLdSZKK';
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const subjects=['อัลกุรอาน','อัลฮะดีษ','ศาสนบัญญัติ','อากีดะ','ตารีค','อัคล้าค','อาหรับ','มลายูรูมี','มลายูยาวี'];
 const gradeBands=[['4.0',80],['3.5',75],['3.0',70],['2.5',65],['2.0',60],['1.5',55],['1.0',50],['0',0]];
 let students=[
@@ -217,23 +222,54 @@ function load(){try{let d=JSON.parse(localStorage.getItem('daruljalal_demo'));if
 function persist(){localStorage.setItem('daruljalal_demo',JSON.stringify(students))}
 function grade(n){for(const [g,min] of gradeBands)if(n>=min)return g;return '0'}
 function avg(s){return s.p1.reduce((a,b,i)=>a+b+(s.p2[i]||0),0)/(subjects.length*2)}
-function login(){
- load();const u=document.getElementById('username').value.trim(),p=document.getElementById('password').value;
- if(u==='admin'&&p==='admin123'){activeUser={role:'teacher',name:'คุณครู'};}
- else {const s=students.find(x=>x.id===u);if(s&&s.status!=='inactive'&&s.status!=='left'&&p==='1234')activeUser={role:'student',id:s.id,name:s.name};}
- if(!activeUser){document.getElementById('loginError').textContent='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';return}
- document.getElementById('loginView').classList.add('hidden');document.getElementById('mainView').classList.remove('hidden');
- document.getElementById('welcomeTitle').textContent=activeUser.role==='teacher'?'สวัสดีค่ะ คุณครู 🌷':'สวัสดี '+activeUser.name+' 😊';
- document.getElementById('welcomeSub').textContent=activeUser.role==='teacher'?'จัดการข้อมูลและผลการเรียนของนักเรียน ป.1–ป.6':'ยินดีต้อนรับสู่ระบบตรวจสอบผลการเรียน';
- document.getElementById('mascot').textContent=activeUser.role==='teacher'?'👩🏻‍🏫':'🧑🏻‍🎓';
- document.getElementById('teacherPanel').classList.toggle('hidden',activeUser.role!=='teacher');
- document.getElementById('studentPanel').classList.toggle('hidden',activeUser.role!=='student');
- document.getElementById('teacherStats').classList.toggle('hidden',activeUser.role!=='teacher');
- document.getElementById('contentTitle').textContent=activeUser.role==='teacher'?'จัดการข้อมูลนักเรียน':'ผลการเรียนของฉัน';
- if(activeUser.role==='teacher'){document.getElementById('countStudents').textContent=students.length;renderTabs();renderTeacher();renderArchive()}
- else {showStudentTerm(1);renderStudentArchives();}
+async function login(){
+ const button=document.getElementById('loginButton');
+ if(!supabaseClient){document.getElementById('loginError').textContent='โหลดระบบเชื่อมต่อไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วรีเฟรชหน้าเว็บ';return}
+ const errorBox=document.getElementById('loginError');
+ const email=document.getElementById('username').value.trim();
+ const password=document.getElementById('password').value;
+ errorBox.textContent='';
+ if(!email||!password){errorBox.textContent='กรุณากรอกอีเมลและรหัสผ่าน';return}
+ button.disabled=true;button.textContent='กำลังตรวจสอบ...';
+ try{
+  const {data:authData,error:authError}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(authError) throw authError;
+  const user=authData.user;
+  if(!user) throw new Error('ไม่พบข้อมูลบัญชีผู้ใช้');
+  const {data:profile,error:profileError}=await supabaseClient
+   .from('profiles').select('id,display_name,role,student_id').eq('id',user.id).maybeSingle();
+  if(profileError) throw profileError;
+  if(!profile||!['admin','teacher','student'].includes(profile.role)){
+   await supabaseClient.auth.signOut();
+   throw new Error('ไม่พบโปรไฟล์หรือบัญชีนี้ยังไม่ได้กำหนดสิทธิ์ กรุณาติดต่อผู้ดูแลระบบ');
+  }
+  if(profile.role==='student'&&!profile.student_id){
+   await supabaseClient.auth.signOut();
+   throw new Error('บัญชีนักเรียนยังไม่ได้เชื่อมกับข้อมูลนักเรียน กรุณาติดต่อผู้ดูแลระบบ');
+  }
+  // หน้าต้นแบบเดิมใช้ชื่อ role=teacher สำหรับหน้าเจ้าหน้าที่; admin และ teacher จึงเข้าหน้านี้ได้
+  activeUser={role:profile.role==='student'?'student':'teacher',authRole:profile.role,authId:user.id,
+   studentId:profile.student_id||null,name:profile.display_name||user.email||'ผู้ใช้งาน'};
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('mainView').classList.remove('hidden');
+  document.getElementById('welcomeTitle').textContent=activeUser.role==='teacher'?'สวัสดีค่ะ คุณครู 🌷':'สวัสดี '+activeUser.name+' 😊';
+  document.getElementById('welcomeSub').textContent=activeUser.role==='teacher'?'เข้าสู่ระบบสำเร็จ · สิทธิ์ '+(profile.role==='admin'?'ผู้ดูแลระบบ':'ครู'):'ยินดีต้อนรับสู่ระบบตรวจสอบผลการเรียน';
+  document.getElementById('mascot').textContent=activeUser.role==='teacher'?'👩🏻‍🏫':'🧑🏻‍🎓';
+  document.getElementById('teacherPanel').classList.toggle('hidden',activeUser.role!=='teacher');
+  document.getElementById('studentPanel').classList.toggle('hidden',activeUser.role!=='student');
+  document.getElementById('teacherStats').classList.toggle('hidden',activeUser.role!=='teacher');
+  document.getElementById('contentTitle').textContent=activeUser.role==='teacher'?'จัดการข้อมูลนักเรียน':'ผลการเรียนของฉัน';
+  if(activeUser.role==='teacher'){document.getElementById('countStudents').textContent=students.length;renderTabs();renderTeacher();renderArchive()}
+  else {showStudentTerm(1);renderStudentArchives();}
+ }catch(err){
+  console.error('Supabase login error:',err);
+  errorBox.textContent=err.message==='Invalid login credentials'?'อีเมลหรือรหัสผ่านไม่ถูกต้อง':(err.message||'เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง');
+ }finally{button.disabled=false;button.textContent='เข้าสู่ระบบ'}
 }
-function logout(){activeUser=null;document.getElementById('mainView').classList.add('hidden');document.getElementById('loginView').classList.remove('hidden');document.getElementById('username').value='';document.getElementById('password').value='';document.getElementById('loginError').textContent=''}
+async function logout(){
+ try{await supabaseClient.auth.signOut()}catch(err){console.error('Supabase sign-out error:',err)}
+ activeUser=null;document.getElementById('mainView').classList.add('hidden');document.getElementById('loginView').classList.remove('hidden');document.getElementById('username').value='';document.getElementById('password').value='';document.getElementById('loginError').textContent='';
+}
 function renderTabs(){let el=document.getElementById('classTabs');el.innerHTML='';for(let i=1;i<=6;i++){let b=document.createElement('button');b.className='tab '+(selectedClass===i?'active':'');b.textContent='ป.'+i;b.onclick=()=>{selectedClass=i;renderTabs();renderTeacher()};el.appendChild(b)}}
 function renderTeacher(){
  let q=(document.getElementById('searchStudent').value||'').toLowerCase();
